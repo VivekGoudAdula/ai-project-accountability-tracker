@@ -56,3 +56,41 @@ class Project(Base):
 
     # Relationships
     team = relationship("Team", back_populates="projects")
+
+class PhaseTask(Base):
+    __tablename__ = "phase_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    subject = Column(String(100), nullable=False)
+    phase = Column(String(50), nullable=False)
+    member_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    task = Column(Text, nullable=False)
+
+    # Relationships
+    team = relationship("Team")
+    member = relationship("User")
+
+class Submission(Base):
+    __tablename__ = "submissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    subject = Column(String(100), nullable=False)
+    phase = Column(String(50), nullable=False)
+
+    file_path = Column(Text, nullable=True)
+    github_link = Column(Text, nullable=True)
+
+    tasks_done = Column(Text, nullable=True)
+    hours_spent = Column(Integer, nullable=True)
+
+    ai_score = Column(Integer, nullable=True)
+    ai_feedback = Column(Text, nullable=True)
+
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    # Relationships
+    team = relationship("Team")
+    user = relationship("User")

@@ -7,7 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import PhaseTimeline from '@/components/PhaseTimeline';
 import TaskList from '@/components/TaskList';
 import SubmissionForm from '@/components/SubmissionForm';
-import { Users, FileText, ArrowLeft, Rocket, Loader2 } from 'lucide-react';
+import { Users, FileText, ArrowLeft, Rocket, Loader2, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -24,16 +24,29 @@ const ProjectWorkspace = () => {
   const subject = subjects.find((s) => s.id === id);
   
   useEffect(() => {
-    if (user?.id && subjects.length === 0) {
-      api.get(`/student/dashboard?user_id=${user.id}`)
-        .then((res) => {
-          useProjectStore.getState().setDashboardData(res.data);
-        })
-        .catch((err) => {
-          console.error('Error fetching dashboard data:', err);
-        });
+    if (user?.id) {
+      if (subjects.length === 0) {
+        api.get(`/student/dashboard?user_id=${user.id}`)
+          .then((res) => {
+            useProjectStore.getState().setDashboardData(res.data);
+          })
+          .catch((err) => {
+            console.error('Error fetching dashboard data:', err);
+          });
+      }
+      
+      // Fetch phase info
+      useProjectStore.getState().fetchPhaseInfo();
+      
+      // Fetch tasks if subject is ready
+      if (subject?.name && user?.id) {
+        useProjectStore.getState().fetchTasks(Number(user.id), subject.name);
+        if (teamId) {
+          useProjectStore.getState().fetchSubmissions(teamId, subject.name);
+        }
+      }
     }
-  }, [user?.id, subjects.length]);
+  }, [user?.id, subjects.length, subject?.name]);
 
   const handleInitialize = async () => {
     if (!initData.title || !initData.description) {
@@ -61,8 +74,8 @@ const ProjectWorkspace = () => {
     }
   };
 
-  const isLeader = user?.id === leaderId;
-  const isInitialized = !!subject.projectTitle;
+  const isLeader = user?.id && leaderId ? Number(user.id) === leaderId : false;
+  const isInitialized = !!subject?.projectTitle;
 
   const currentPhase = phases.find((p) => p.status === 'current');
 
@@ -242,7 +255,7 @@ const ProjectWorkspace = () => {
                 </motion.div>
 
                 {/* Submission Form */}
-                <SubmissionForm currentWeek={currentPhase?.week || 7} />
+                <SubmissionForm currentWeek={currentPhase?.week || 7} subjectName={subject.name} />
               </div>
 
               {/* Right Column */}

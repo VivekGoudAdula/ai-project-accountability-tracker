@@ -120,7 +120,7 @@ def evaluate_submission(
         f"Evidence: {evidence_str}\n\n"
         f"Return ONLY a JSON object with exactly these keys:\n"
         f'{{"contribution_score": <0-100>, "consistency_score": <0-100>, '
-        f'"freeload_risk": <0-100>, "pattern": "<label>", "summary": "<feedback>"}}'
+        f'"freeload_risk": "Low | Medium | High", "feedback": "<summary>"}}'
     )
     raw = _chat(EVALUATION_SYSTEM, user_prompt)
     return _parse_json_response(raw)

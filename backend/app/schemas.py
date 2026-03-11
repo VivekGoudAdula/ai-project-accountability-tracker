@@ -36,3 +36,46 @@ class DashboardResponse(BaseModel):
     members: list[MemberOut] = []
     subjects: list[SubjectOut] = []
     message: Optional[str] = None
+
+class PhaseInfo(BaseModel):
+    week_number: int
+    current_phase: str
+    submission_open: bool
+    phase_map: dict[int, str]
+
+class TaskOut(BaseModel):
+    id: int
+    team_id: int
+    subject: str
+    phase: str
+    member_id: int
+    task: str
+
+    class Config:
+        from_attributes = True
+
+class SubmissionCreate(BaseModel):
+    team_id: int
+    user_id: int
+    subject: str
+    phase: str
+    tasks_done: str
+    hours_spent: int
+    github_link: Optional[str] = None
+
+class SubmissionOut(BaseModel):
+    id: int
+    team_id: int
+    user_id: int
+    subject: str
+    phase: str
+    file_path: Optional[str] = None
+    github_link: Optional[str] = None
+    tasks_done: Optional[str] = None
+    hours_spent: Optional[int] = None
+    ai_score: Optional[int] = None
+    ai_feedback: Optional[str] = None
+    created_at: str
+
+    class Config:
+        from_attributes = True

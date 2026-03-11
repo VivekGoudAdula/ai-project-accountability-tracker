@@ -21,6 +21,9 @@ const Dashboard = () => {
         .catch((err) => {
           console.error('Error fetching dashboard data:', err);
         });
+      
+      // Fetch current phase info
+      useProjectStore.getState().fetchPhaseInfo();
     }
   }, [user?.id, setDashboardData]);
 
