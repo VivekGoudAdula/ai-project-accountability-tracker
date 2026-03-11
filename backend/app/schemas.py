@@ -24,6 +24,7 @@ class ProjectCreate(BaseModel):
     lg_number: int
 
 class UserInfo(BaseModel):
+    id: int
     name: str
     class_section: Optional[str]
     lg_number: Optional[int]
@@ -37,8 +38,9 @@ class SubjectCardOut(BaseModel):
 
 class DashboardResponse(BaseModel):
     user: UserInfo
-    team_members: List[str]
+    team_members: List[UserInfo]
     leader: Optional[str]
+    leader_id: Optional[int]
     subjects: List[SubjectCardOut]
 
 class TaskOut(BaseModel):
@@ -69,20 +71,25 @@ class PhaseInfo(BaseModel):
     submission_open: bool
     phase_map: Dict[int, str]
 
-class SubmissionOut(BaseModel):
-    id: int
-    class_section: str
-    lg_number: int
+class SubmissionCreate(BaseModel):
     user_id: int
     subject_id: int
     phase: str
+    description: str
+    github_link: Optional[str] = None
+
+class SubmissionOut(BaseModel):
+    id: int
+    user_id: int
+    subject_id: int
+    phase: str
+    week_number: Optional[int]
     file_path: Optional[str] = None
     github_link: Optional[str] = None
-    tasks_done: Optional[str] = None
-    hours_spent: Optional[int] = None
+    description: Optional[str] = None
     ai_score: Optional[int] = None
     ai_feedback: Optional[str] = None
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True

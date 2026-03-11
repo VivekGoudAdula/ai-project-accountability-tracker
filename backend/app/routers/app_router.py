@@ -17,6 +17,7 @@ def get_student_dashboard(user_id: int, db: Session = Depends(get_db)):
     
     # 2. Get user info
     user_info = UserInfo(
+        id=user.id,
         name=user.name,
         class_section=user.class_section,
         lg_number=user.lg_number
@@ -25,6 +26,7 @@ def get_student_dashboard(user_id: int, db: Session = Depends(get_db)):
     # 3. Get team members
     team_members_list = []
     leader_name = None
+    leader_id = None
     
     if user.class_section and user.lg_number:
         members = db.query(User).join(TeamMember, User.id == TeamMember.user_id).filter(
@@ -32,24 +34,29 @@ def get_student_dashboard(user_id: int, db: Session = Depends(get_db)):
             TeamMember.lg_number == user.lg_number
         ).all()
         
-        team_members_list = [m.name for m in members]
+        team_members_list = [
+            UserInfo(id=m.id, name=m.name, class_section=m.class_section, lg_number=m.lg_number) 
+            for m in members
+        ]
         
         # Find leader
-        leader_member = db.query(User).join(TeamMember, User.id == TeamMember.user_id).filter(
+        leader_record = db.query(TeamMember).filter(
             TeamMember.class_section == user.class_section,
             TeamMember.lg_number == user.lg_number,
             TeamMember.is_leader == True
         ).first()
         
-        if leader_member:
-            leader_name = leader_member.name
+        if leader_record:
+            leader_id = leader_record.user_id
+            leader_user = db.query(User).filter(User.id == leader_id).first()
+            if leader_user:
+                leader_name = leader_user.name
 
     # 4. Get subjects and check for projects
     subjects = db.query(Subject).all()
     subject_cards = []
     
     for sub in subjects:
-        # Check if project exists for this LG and subject
         project = None
         if user.class_section and user.lg_number:
             project = db.query(TeamProject).filter(
@@ -58,12 +65,21 @@ def get_student_dashboard(user_id: int, db: Session = Depends(get_db)):
                 TeamProject.subject_id == sub.id
             ).first()
         
+        if project:
+            from app.services.phase_engine import get_current_phase, PHASES
+            phase_name = get_current_phase(project)
+            # Simple progress: percentage of phases completed
+            progress = int((project.current_phase_index / len(PHASES)) * 100)
+        else:
+            phase_name = "Project Setup"
+            progress = 0
+        
         card = SubjectCardOut(
             id=sub.id,
             name=sub.name,
             project_title=project.title if project else None,
-            phase="Phase 1: Project Setup" if not project else "Phase 2: Literature Survey", # Default phase
-            progress=0 if not project else 20 # Default progress
+            phase=phase_name,
+            progress=progress
         )
         subject_cards.append(card)
 
@@ -71,6 +87,7 @@ def get_student_dashboard(user_id: int, db: Session = Depends(get_db)):
         user=user_info,
         team_members=team_members_list,
         leader=leader_name,
+        leader_id=leader_id,
         subjects=subject_cards
     )
 

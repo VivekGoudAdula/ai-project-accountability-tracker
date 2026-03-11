@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { useProjectStore, Subject } from '@/store/projectStore';
 import { BookOpen, Code, Brain, FileText, Database } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
 const iconMap: Record<string, React.ElementType> = {
   'Prompt Engineering': Brain,
@@ -59,11 +60,22 @@ const SubjectCard = ({ subject }: Props) => {
         </div>
         
         <div className="mb-3 flex items-center justify-between">
-          <span className="rounded-full bg-secondary px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            {subject.currentPhase}
+          <span className={cn(
+            "rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider",
+            subject.currentPhase === "Evaluation" 
+              ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" 
+              : "bg-secondary text-muted-foreground"
+          )}>
+            {subject.currentPhase === "Evaluation" ? "Evaluation Phase" : subject.currentPhase}
           </span>
           <span className="text-sm font-bold text-foreground">{subject.progress}%</span>
         </div>
+        
+        {subject.currentPhase === "Evaluation" && (
+          <p className="mb-3 text-[10px] font-bold text-primary animate-pulse uppercase tracking-tight">
+            Prepare for Final Presentation
+          </p>
+        )}
         
         <div className="h-2 w-full overflow-hidden rounded-full bg-secondary/50">
           <motion.div

@@ -38,32 +38,31 @@ class TeamProject(Base):
     title = Column(Text)
     description = Column(Text)
     leader_id = Column(Integer, ForeignKey("users.id"))
+    current_phase_index = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # Keep these for now if they are used elsewhere, but we might need to migrate them
 class PhaseTask(Base):
     __tablename__ = "phase_tasks"
     id = Column(Integer, primary_key=True, index=True)
+    subject_id = Column(Integer, ForeignKey("subjects.id"))
     class_section = Column(String(20))
     lg_number = Column(Integer)
-    subject_id = Column(Integer, ForeignKey("subjects.id"))
-    phase = Column(String, nullable=False)
+    phase = Column(String(50))
     member_id = Column(Integer, ForeignKey("users.id"))
-    task = Column(Text, nullable=False)
+    task = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Submission(Base):
     __tablename__ = "submissions"
     id = Column(Integer, primary_key=True, index=True)
-    class_section = Column(String(20))
-    lg_number = Column(Integer)
     user_id = Column(Integer, ForeignKey("users.id"))
     subject_id = Column(Integer, ForeignKey("subjects.id"))
-    phase = Column(String, nullable=False)
+    phase = Column(String(50))
+    week_number = Column(Integer)
     file_path = Column(String)
     github_link = Column(String)
-    tasks_done = Column(Text)
-    hours_spent = Column(Integer)
+    description = Column(Text)
     ai_score = Column(Integer)
     ai_feedback = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)

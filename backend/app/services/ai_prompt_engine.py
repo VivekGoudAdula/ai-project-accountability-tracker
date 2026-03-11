@@ -10,7 +10,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = "mixtral-8x7b-32768"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 _client: Optional[Groq] = None
 

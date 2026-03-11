@@ -135,3 +135,27 @@ def analyze_github_repo(repo_url: str) -> dict:
             "recent_commits": recent_commits,
             "analysis_summary": "\n".join(summary_lines),
         }
+
+def get_commit_counts(repo_url: str) -> dict:
+    """
+    Counts commits per contributor for a given repository.
+    Example output: {"vivek": 25, "rohit": 14, "ankit": 7}
+    """
+    try:
+        owner, repo = _parse_owner_repo(repo_url)
+    except ValueError:
+        return {}
+
+    with httpx.Client(headers=_get_headers(), timeout=15.0) as client:
+        # Get contributors with contribution counts
+        resp = client.get(f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contributors")
+        if resp.status_code != 200:
+            return {}
+        
+        counts = {}
+        for contributor in resp.json():
+            login = contributor.get("login")
+            contributions = contributor.get("contributions", 0)
+            counts[login] = contributions
+            
+        return counts

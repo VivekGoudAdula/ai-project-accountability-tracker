@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, TeamMember, TeamProject, PhaseTask, Submission, Subject
-from app.schemas import PhaseInfo, TaskOut, SubmissionOut
-from app.services.phase_engine import get_phase_info, get_current_phase
-from app.services.ai_prompt_engine import divide_tasks_for_phase, evaluate_submission
-from app.services.github_analysis import analyze_github_repo
-from typing import Optional, List
+from app.schemas import TaskOut, SubmissionOut
+from app.services.phase_engine import get_current_phase, is_submission_open, get_phase_info, PHASES
+from app.services.task_division_engine import divide_phase_tasks
+from app.services.github_analysis import get_commit_counts
+from app.services.ai_evaluator import evaluate_student_submission, generate_team_summary
+from typing import Optional, List, Dict, Any
 import os
 import shutil
 from datetime import datetime
@@ -17,9 +18,27 @@ UPLOAD_DIR = "uploads"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-@router.get("/phase/current", response_model=PhaseInfo)
-def get_current_phase_info():
-    return get_phase_info()
+@router.get("/phase/current/{subject_id}", response_model=Dict[str, Any])
+def get_current_phase_info(subject_id: int, user_id: int, db: Session = Depends(get_db)):
+    membership = db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
+    if not membership:
+         raise HTTPException(status_code=404, detail="User not assigned to a team")
+    
+    project = db.query(TeamProject).filter(
+        TeamProject.class_section == membership.class_section,
+        TeamProject.lg_number == membership.lg_number,
+        TeamProject.subject_id == subject_id
+    ).first()
+    
+    if not project:
+        return {
+            "phase_index": 0,
+            "current_phase": "Project Setup",
+            "submission_open": False,
+            "phase_map": {i: name for i, name in enumerate(PHASES)}
+        }
+        
+    return get_phase_info(project)
 
 @router.get("/tasks", response_model=List[TaskOut])
 def get_tasks(
@@ -27,15 +46,22 @@ def get_tasks(
     subject_id: int, 
     db: Session = Depends(get_db)
 ):
-    # 1. Get current phase
-    phase = get_current_phase()
-    if not phase:
-        return []
-
-    # 2. Get user's LG info
+    # 1. Get user's LG info
     membership = db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
     if not membership:
         raise HTTPException(status_code=404, detail="User not assigned to a team")
+    
+    # 2. Get project to find current phase
+    project = db.query(TeamProject).filter(
+        TeamProject.class_section == membership.class_section,
+        TeamProject.lg_number == membership.lg_number,
+        TeamProject.subject_id == subject_id
+    ).first()
+    
+    if not project:
+        return []
+        
+    phase = get_current_phase(project)
     
     # 3. Check if tasks already exist for this LG, subject and phase
     tasks = db.query(PhaseTask).filter(
@@ -46,41 +72,33 @@ def get_tasks(
     ).all()
 
     if not tasks:
-        # 4. Trigger AI task division if tasks don't exist
-        project = db.query(TeamProject).filter(
-            TeamProject.class_section == membership.class_section,
-            TeamProject.lg_number == membership.lg_number,
-            TeamProject.subject_id == subject_id
-        ).first()
-        
-        if not project:
-            # We skip task division if project not initialized
-            return []
-
-        # Get all team members
-        members = db.query(TeamMember).filter(
+        # Get all team members and their names
+        team_members = db.query(User).join(TeamMember).filter(
             TeamMember.class_section == membership.class_section,
             TeamMember.lg_number == membership.lg_number
         ).all()
         
+        member_names = [m.name for m in team_members]
+        member_ids = [m.id for m in team_members]
+        
         # Call AI engine
         try:
-            divided_tasks = divide_tasks_for_phase(
+            divided_tasks = divide_phase_tasks(
                 phase=phase,
-                project_description=project.description or ""
+                members=member_names
             )
             
-            # Store tasks mapping member_id to task
-            for i, member in enumerate(members):
+            # Store tasks
+            for i, m_id in enumerate(member_ids):
                 task_key = f"member{i+1}_task"
                 task_text = divided_tasks.get(task_key, "Contribute to project phase")
                 
                 new_task = PhaseTask(
+                    subject_id=subject_id,
                     class_section=membership.class_section,
                     lg_number=membership.lg_number,
-                    subject_id=subject_id,
                     phase=phase,
-                    member_id=member.user_id,
+                    member_id=m_id,
                     task=task_text
                 )
                 db.add(new_task)
@@ -98,104 +116,148 @@ def get_tasks(
             print(f"Error in task division: {e}")
             return []
 
-    # Convert to TaskOut schema
     return [TaskOut(id=t.id, phase=t.phase, member_id=t.member_id, task=t.task) for t in tasks]
 
 @router.post("/submission/create")
 async def create_submission(
-    class_section: str = Form(...),
-    lg_number: int = Form(...),
     user_id: int = Form(...),
     subject_id: int = Form(...),
     phase: str = Form(...),
-    tasks_done: str = Form(...),
-    hours_spent: int = Form(...),
+    description: str = Form(...),
     github_link: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db)
 ):
+    if not is_submission_open():
+        raise HTTPException(status_code=400, detail="Submission deadline passed or window closed.")
+
+    # 1. Save File if present
     file_path = None
     if file:
         file_ext = os.path.splitext(file.filename)[1]
-        filename = f"{class_section}_{lg_number}_{phase}_{user_id}{file_ext}"
+        filename = f"{user_id}_{subject_id}_{phase}_{datetime.now().strftime('%Y%m%d%H%M%S')}{file_ext}"
         destination = os.path.join(UPLOAD_DIR, filename)
         with open(destination, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         file_path = destination
 
-    # 2. AI Evaluation
-    ai_score = 0
-    ai_feedback = ""
+    # 2. Fetch GitHub data if link is provided
+    commit_data = {}
+    if github_link:
+        commit_data = get_commit_counts(github_link)
+
+    # 3. AI Evaluation
+    evaluation = evaluate_student_submission(
+        phase=phase,
+        description=description,
+        commit_data=commit_data
+    )
+
+    # 4. Create submission record
+    membership = db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
+    project = db.query(TeamProject).filter(
+        TeamProject.class_section == membership.class_section,
+        TeamProject.lg_number == membership.lg_number,
+        TeamProject.subject_id == subject_id
+    ).first()
     
-    try:
-        # Evaluate with AI
-        evidence = github_link if phase == "Implementation" else file_path
-        evaluation = evaluate_submission(
-            phase=phase,
-            tasks_done=tasks_done,
-            evidence_link=evidence,
-            hours_spent=float(hours_spent)
-        )
-        
-        ai_score = evaluation.get("contribution_score", 0)
-        feedback_text = evaluation.get("feedback", "")
-        risk = evaluation.get("freeload_risk", "Low")
-        
-        ai_feedback = f"Evaluation: {feedback_text}\nRisk Level: {risk}"
-
-    except Exception as e:
-        print(f"Error in evaluation: {e}")
-        ai_feedback = "Evaluation failed. Please contact admin."
-
-    # 3. Create submission record
-    submission = Submission(
-        class_section=class_section,
-        lg_number=lg_number,
+    new_submission = Submission(
         user_id=user_id,
         subject_id=subject_id,
         phase=phase,
+        week_number=project.current_phase_index,
         file_path=file_path,
         github_link=github_link,
-        tasks_done=tasks_done,
-        hours_spent=hours_spent,
-        ai_score=ai_score,
-        ai_feedback=ai_feedback
+        description=description,
+        ai_score=evaluation.get("score", 0),
+        ai_feedback=evaluation.get("feedback", "")
     )
     
-    db.add(submission)
+    db.add(new_submission)
     db.commit()
-    db.refresh(submission)
+    db.refresh(new_submission)
     
-    return {"message": "Submission successful", "submission_id": submission.id}
+    return {"message": "Submission successful", "submission": new_submission}
 
-@router.get("/submission/history", response_model=List[SubmissionOut])
+@router.get("/project/{subject_id}/evaluation")
+def get_evaluation_details(subject_id: int, user_id: int, db: Session = Depends(get_db)):
+    membership = db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
+    if not membership:
+        raise HTTPException(status_code=404, detail="Team not found")
+        
+    team_members = db.query(User).join(TeamMember).filter(
+        TeamMember.class_section == membership.class_section,
+        TeamMember.lg_number == membership.lg_number
+    ).all()
+    
+    member_names = {m.id: m.name for m in team_members}
+    
+    submissions = db.query(Submission).filter(
+        Submission.subject_id == subject_id,
+        Submission.user_id.in_(member_names.keys())
+    ).all()
+    
+    # Calculate contribution summary
+    contribution_summary = {}
+    commit_summary = {}
+    
+    for m_id, name in member_names.items():
+        m_subs = [s for s in submissions if s.user_id == m_id]
+        avg_score = sum(s.ai_score for s in m_subs) / len(m_subs) if m_subs else 0
+        contribution_summary[name] = round(avg_score, 1)
+        commit_summary[name] = 0
+        
+    # Get phase performance
+    project = db.query(TeamProject).filter(
+        TeamProject.class_section == membership.class_section,
+        TeamProject.lg_number == membership.lg_number,
+        TeamProject.subject_id == subject_id
+    ).first()
+    
+    phase_performance = []
+    for i, p_name in enumerate(PHASES):
+        if i < project.current_phase_index:
+            phase_performance.append({"phase": p_name, "status": "Completed"})
+        elif i == project.current_phase_index:
+            phase_performance.append({"phase": p_name, "status": "Current"})
+        else:
+            phase_performance.append({"phase": p_name, "status": "Upcoming"})
+
+    # Fetch total commits per user if Implementation phase submission exists
+    impl_submission = db.query(Submission).filter(
+        Submission.subject_id == subject_id,
+        Submission.phase == "Implementation",
+        Submission.github_link.isnot(None)
+    ).first()
+    
+    if impl_submission:
+        commit_counts = get_commit_counts(impl_submission.github_link)
+        for name in member_names.values():
+            commit_summary[name] = commit_counts.get(name.split()[0].lower(), commit_counts.get(name, 0))
+
+    # AI Summary
+    phase_data = [
+        {"phase": s.phase, "student": member_names.get(s.user_id), "score": s.ai_score}
+        for s in submissions
+    ]
+    ai_summary_res = generate_team_summary(phase_data, list(member_names.values()))
+
+    return {
+        "contribution_summary": contribution_summary,
+        "commit_summary": commit_summary,
+        "phase_performance": phase_performance,
+        "ai_summary": ai_summary_res.get("summary", "No summary generated.")
+    }
+
+@router.get("/submission/history")
 def get_submission_history(
-    class_section: str,
-    lg_number: int,
+    user_id: int,
     subject_id: int,
     db: Session = Depends(get_db)
 ):
     submissions = db.query(Submission).filter(
-        Submission.class_section == class_section,
-        Submission.lg_number == lg_number,
+        Submission.user_id == user_id,
         Submission.subject_id == subject_id
     ).order_by(Submission.created_at.desc()).all()
     
-    results = []
-    for s in submissions:
-        results.append(SubmissionOut(
-            id=s.id,
-            class_section=s.class_section,
-            lg_number=s.lg_number,
-            user_id=s.user_id,
-            subject_id=s.subject_id,
-            phase=s.phase,
-            file_path=s.file_path,
-            github_link=s.github_link,
-            tasks_done=s.tasks_done,
-            hours_spent=s.hours_spent,
-            ai_score=s.ai_score,
-            ai_feedback=s.ai_feedback,
-            created_at=s.created_at.isoformat() if s.created_at else ""
-        ))
-    return results
+    return submissions

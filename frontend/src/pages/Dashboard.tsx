@@ -52,22 +52,37 @@ const Dashboard = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="mb-6 flex items-center justify-between rounded-xl border border-border bg-card p-5"
+          className="mb-8 grid gap-4 lg:grid-cols-3"
         >
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl gradient-primary">
-              <Clock className="h-6 w-6 text-primary-foreground" />
+          <div className="lg:col-span-2 flex items-center justify-between rounded-2xl border border-primary/20 bg-card p-6 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
+                <Clock className="h-7 w-7 text-primary-foreground" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Phase</p>
+                <p className="text-xl font-black text-foreground">{currentPhase?.title || 'Literature Survey'} <span className="text-primary text-sm">(Week {currentPhase?.week || 6})</span></p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Current Phase</p>
-              <p className="text-lg font-bold text-foreground">{currentPhase?.title || 'Project Design'} (Week {currentPhase?.week || 7})</p>
+            <div className="hidden items-center gap-2 rounded-xl border border-warning/30 bg-warning/5 px-5 py-3 sm:flex">
+              <AlertCircle className="h-5 w-5 text-warning" />
+              <div>
+                <p className="text-[10px] font-bold text-foreground uppercase tracking-tight">Deadline</p>
+                <p className="text-xs font-medium text-warning">Sunday 11:59 PM</p>
+              </div>
             </div>
           </div>
-          <div className="hidden items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-2 sm:flex">
-            <AlertCircle className="h-4 w-4 text-warning" />
-            <div>
-              <p className="text-xs font-medium text-foreground">Deadline</p>
-              <p className="text-xs text-muted-foreground">Sunday 11:59 PM</p>
+          
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Next Milestone</p>
+            <div className="flex items-center gap-3">
+              <div className="h-2 flex-1 rounded-full bg-secondary">
+                <div 
+                  className="h-full rounded-full bg-primary" 
+                  style={{ width: `${((currentPhase?.week || 6) - 5) / 6 * 100}%` }} 
+                />
+              </div>
+              <span className="text-xs font-bold text-foreground">{Math.round(((currentPhase?.week || 6) - 5) / 6 * 100)}%</span>
             </div>
           </div>
         </motion.div>

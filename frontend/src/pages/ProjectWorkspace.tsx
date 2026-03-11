@@ -7,6 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import PhaseTimeline from '@/components/PhaseTimeline';
 import TaskList from '@/components/TaskList';
 import SubmissionForm from '@/components/SubmissionForm';
+import EvaluationInsightsPanel from '@/components/EvaluationInsightsPanel';
 import { Users, FileText, ArrowLeft, Rocket, Loader2, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -17,36 +18,38 @@ import { Textarea } from '@/components/ui/textarea';
 const ProjectWorkspace = () => {
   const { id } = useParams();
   const { user } = useAuthStore();
-  const { subjects, phases, tasks, leaderName, teamMembers: storeMembers } = useProjectStore();
+  const { subjects, phases, tasks, leaderName, leaderId, teamMembers: storeMembers } = useProjectStore();
   const [initializing, setInitializing] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   const [initData, setInitData] = useState({ title: '', description: '' });
   
   const subject = subjects.find((s) => s.id === id);
   
   useEffect(() => {
-    if (user?.id) {
-      if (subjects.length === 0) {
-        api.get(`/student/dashboard?user_id=${user.id}`)
-          .then((res) => {
-            useProjectStore.getState().setDashboardData(res.data);
-          })
-          .catch((err) => {
-            console.error('Error fetching dashboard data:', err);
-          });
-      }
-      
-      // Fetch phase info
-      useProjectStore.getState().fetchPhaseInfo();
-      
-      // Fetch tasks if subject is ready
-      if (subject?.id && user?.id) {
-        useProjectStore.getState().fetchTasks(Number(user.id), Number(subject.id));
-        if (user.classSection && user.lgNumber) {
-          useProjectStore.getState().fetchSubmissions(user.classSection, Number(user.lgNumber.replace('LG ', '')), Number(subject.id));
-        }
-      }
+    if (!user?.id) return;
+    
+    const numericId = id ? Number(id) : NaN;
+    if (isNaN(numericId)) return;
+
+    if (subjects.length === 0) {
+      setDashboardLoading(true);
+      api.get(`/student/dashboard?user_id=${user.id}`)
+        .then((res) => {
+          useProjectStore.getState().setDashboardData(res.data);
+        })
+        .catch((err) => {
+          console.error('Error fetching dashboard data:', err);
+        })
+        .finally(() => setDashboardLoading(false));
     }
-  }, [user?.id, subjects.length, subject?.id]);
+    
+    // Fetch tasks if subject is ready
+    if (subject?.id) {
+      useProjectStore.getState().fetchPhaseInfo(Number(user.id), numericId);
+      useProjectStore.getState().fetchTasks(Number(user.id), numericId);
+      useProjectStore.getState().fetchSubmissions(Number(user.id), numericId);
+    }
+  }, [user?.id, subjects.length, subject?.id, id]);
 
   const handleInitialize = async () => {
     if (!initData.title || !initData.description) {
@@ -74,7 +77,13 @@ const ProjectWorkspace = () => {
     }
   };
 
-  const isLeader = user?.name === leaderName;
+  // Use leaderId (number) for reliable comparison; fall back to name if not loaded yet
+  const isLeader = leaderId != null 
+    ? Number(user?.id) === leaderId
+    : user?.name === leaderName;
+    
+  // Show loader if dashboard is loading AND we don't know leadership yet
+  const showInitLoader = dashboardLoading && leaderId == null;
   const isInitialized = !!subject?.projectTitle;
 
   const currentPhase = phases.find((p) => p.status === 'current');
@@ -172,6 +181,11 @@ const ProjectWorkspace = () => {
                     </Button>
                   </div>
                 </motion.div>
+              ) : showInitLoader ? (
+                <div className="flex h-80 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/5">
+                  <Loader2 className="h-10 w-10 animate-spin text-primary/40" />
+                  <p className="mt-4 text-sm text-muted-foreground">Loading team info...</p>
+                </div>
               ) : (
                 <div className="flex h-80 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/50 bg-card/5 text-center p-12">
                   <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-secondary/50">
@@ -258,8 +272,12 @@ const ProjectWorkspace = () => {
                   </div>
                 </motion.div>
 
-                {/* Submission Forum */}
-                <SubmissionForm currentWeek={currentPhase?.week || 7} subjectName={subject.name} />
+                {/* Conditional Rendering: Submission Form OR Evaluation Dashboard */}
+                {subject.currentPhase === "Evaluation" ? (
+                  <EvaluationInsightsPanel subjectId={Number(subject.id)} />
+                ) : (
+                  <SubmissionForm currentWeek={currentPhase?.week || 0} subjectName={subject.name} />
+                )}
               </div>
 
               {/* Right Column */}
