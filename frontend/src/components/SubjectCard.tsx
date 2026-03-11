@@ -8,7 +8,7 @@ const iconMap: Record<string, React.ElementType> = {
   'NLP': FileText,
   'Software Engineering': Code,
   'XAI': BookOpen,
-  'Data Warehousing & Data Mining': Database,
+  'Data Warehousing and Data Mining': Database,
 };
 
 const colorMap: Record<string, string> = {
@@ -16,16 +16,7 @@ const colorMap: Record<string, string> = {
   'NLP': 'from-[hsl(217,91%,60%)] to-[hsl(199,89%,48%)]',
   'Software Engineering': 'from-[hsl(160,84%,39%)] to-[hsl(168,80%,35%)]',
   'XAI': 'from-[hsl(25,95%,53%)] to-[hsl(38,92%,50%)]',
-  'Data Warehousing & Data Mining': 'from-[hsl(350,89%,60%)] to-[hsl(330,81%,60%)]',
-};
-
-const phaseNames: Record<number, string> = {
-  6: 'Literature Survey',
-  7: 'Project Design',
-  8: 'Implementation',
-  9: 'Project Report',
-  10: 'Presentation',
-  11: 'Evaluation',
+  'Data Warehousing and Data Mining': 'from-[hsl(350,89%,60%)] to-[hsl(330,81%,60%)]',
 };
 
 interface Props {
@@ -45,34 +36,36 @@ const SubjectCard = ({ subject }: Props) => {
 
   return (
     <motion.div
-      whileHover={{ y: -4, scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
+      whileHover={{ y: -8, scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
       onClick={handleClick}
-      className="group cursor-pointer overflow-hidden rounded-xl border border-border bg-card transition-shadow duration-300 hover:shadow-lg"
+      className="group cursor-pointer overflow-hidden rounded-xl border border-border bg-card transition-all duration-300 hover:shadow-xl hover:border-primary/50"
     >
       {/* Gradient top border */}
       <div className={`h-1.5 w-full bg-gradient-to-r ${gradient}`} />
-      <div className="p-5">
-        <div className="mb-4 flex items-center gap-3">
-          <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${gradient}`}>
-            <Icon className="h-5 w-5 text-primary-foreground" />
+      <div className="p-6">
+        <div className="mb-5 flex items-center gap-4">
+          <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${gradient} shadow-lg shadow-black/10`}>
+            <Icon className="h-6 w-6 text-primary-foreground" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-sm font-semibold text-foreground">{subject.name}</h3>
-            {subject.projectTitle && (
-              <p className="truncate text-xs text-muted-foreground">{subject.projectTitle}</p>
+            <h3 className="truncate text-base font-bold text-foreground">{subject.name}</h3>
+            {subject.projectTitle ? (
+              <p className="truncate text-xs text-primary font-medium">{subject.projectTitle}</p>
+            ) : (
+              <p className="truncate text-xs text-muted-foreground italic">Project not initialized</p>
             )}
           </div>
         </div>
         
         <div className="mb-3 flex items-center justify-between">
-          <span className="rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            {phaseNames[subject.currentPhase] || `Week ${subject.currentPhase}`}
+          <span className="rounded-full bg-secondary px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            {subject.currentPhase}
           </span>
-          <span className="text-xs font-semibold text-foreground">{subject.progress}%</span>
+          <span className="text-sm font-bold text-foreground">{subject.progress}%</span>
         </div>
         
-        <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-secondary/50">
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${subject.progress}%` }}

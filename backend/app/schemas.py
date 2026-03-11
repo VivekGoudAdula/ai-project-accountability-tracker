@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List, Dict
+from datetime import datetime
 
 class UserSignup(BaseModel):
     name: str
@@ -15,38 +16,33 @@ class UserLogin(BaseModel) :
     email: EmailStr
     password: str
 
-class ProjectInitialize(BaseModel):
-    user_id: int
-    team_id: int
-    subject: str
+class ProjectCreate(BaseModel):
+    subject_id: int
     title: str
     description: str
+    class_section: str
+    lg_number: int
 
-class MemberOut(BaseModel):
+class UserInfo(BaseModel):
     name: str
+    class_section: Optional[str]
+    lg_number: Optional[int]
 
-class SubjectOut(BaseModel):
+class SubjectCardOut(BaseModel):
     id: int
-    subject: str
-    title: Optional[str] = None
+    name: str
+    project_title: Optional[str] = None
+    phase: Optional[str] = "Phase 1: Project Setup"
+    progress: Optional[int] = 0
 
 class DashboardResponse(BaseModel):
-    team_id: Optional[int] = None
-    leader_id: Optional[int] = None
-    members: list[MemberOut] = []
-    subjects: list[SubjectOut] = []
-    message: Optional[str] = None
-
-class PhaseInfo(BaseModel):
-    week_number: int
-    current_phase: str
-    submission_open: bool
-    phase_map: dict[int, str]
+    user: UserInfo
+    team_members: List[str]
+    leader: Optional[str]
+    subjects: List[SubjectCardOut]
 
 class TaskOut(BaseModel):
     id: int
-    team_id: int
-    subject: str
     phase: str
     member_id: int
     task: str
@@ -54,20 +50,31 @@ class TaskOut(BaseModel):
     class Config:
         from_attributes = True
 
-class SubmissionCreate(BaseModel):
-    team_id: int
-    user_id: int
-    subject: str
-    phase: str
-    tasks_done: str
-    hours_spent: int
-    github_link: Optional[str] = None
+class ProjectOut(BaseModel):
+    id: int
+    subject_id: int
+    title: str
+    description: str
+    class_section: str
+    lg_number: int
+    leader_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class PhaseInfo(BaseModel):
+    week_number: int
+    current_phase: str
+    submission_open: bool
+    phase_map: Dict[int, str]
 
 class SubmissionOut(BaseModel):
     id: int
-    team_id: int
+    class_section: str
+    lg_number: int
     user_id: int
-    subject: str
+    subject_id: int
     phase: str
     file_path: Optional[str] = None
     github_link: Optional[str] = None

@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import {
   LayoutDashboard, BookOpen, Upload, BarChart3, User, LogOut, Brain, ChevronLeft, ChevronRight,
@@ -16,7 +16,13 @@ const navItems = [
 const AppSidebar = () => {
   const { collapsed, setCollapsed } = useSidebarState();
   const location = useLocation();
+  const navigate = useNavigate();
   const { logout } = useAuthStore();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <motion.aside
@@ -79,7 +85,7 @@ const AppSidebar = () => {
       {/* Bottom */}
       <div className="border-t border-border p-3">
         <button
-          onClick={logout}
+          onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         >
           <LogOut className="h-5 w-5 flex-shrink-0" />

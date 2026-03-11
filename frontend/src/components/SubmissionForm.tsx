@@ -50,7 +50,7 @@ const phaseFields: Record<number, { label: string; fields: { name: string; type:
 
 const SubmissionForm = ({ currentWeek, subjectName }: Props) => {
   const { user } = useAuthStore();
-  const { teamId, currentPhaseInfo } = useProjectStore();
+  const { currentPhaseInfo, subjects } = useProjectStore();
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -60,6 +60,7 @@ const SubmissionForm = ({ currentWeek, subjectName }: Props) => {
     file: null as File | null
   });
 
+  const subject = subjects.find(s => s.name === subjectName);
   const phase = phaseFields[currentWeek];
   const isSubmissionOpen = currentPhaseInfo?.submission_open;
 
@@ -83,12 +84,18 @@ const SubmissionForm = ({ currentWeek, subjectName }: Props) => {
       return;
     }
 
+    if (!user?.classSection || !user?.lgNumber || !subject?.id) {
+      toast.error('User or subject information missing');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const data = new FormData();
-      data.append('team_id', String(teamId));
+      data.append('class_section', user.classSection);
+      data.append('lg_number', user.lgNumber.replace('LG ', ''));
       data.append('user_id', String(user?.id));
-      data.append('subject', subjectName);
+      data.append('subject_id', subject.id);
       data.append('phase', phase.label);
       data.append('tasks_done', formData.tasksDone);
       data.append('hours_spent', formData.hoursSpent);
@@ -112,15 +119,19 @@ const SubmissionForm = ({ currentWeek, subjectName }: Props) => {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-xl border border-border bg-card p-6"
+      className="rounded-2xl border border-border bg-card p-8 shadow-sm"
     >
-      <div className="mb-1 flex items-center gap-2">
-        <Upload className="h-5 w-5 text-primary" />
-        <h3 className="text-base font-semibold text-foreground">
-          Submit — Week {currentWeek}: {phase.label}
-        </h3>
+      <div className="mb-2 flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+          <Upload className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-foreground tracking-tight">
+            Week {currentWeek}: {phase.label}
+          </h3>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Phase Submission</p>
+        </div>
       </div>
-      <p className="mb-5 text-xs text-muted-foreground">Deadline: Sunday 11:59 PM</p>
 
       <AnimatePresence mode="wait">
         {submitted ? (
@@ -128,68 +139,73 @@ const SubmissionForm = ({ currentWeek, subjectName }: Props) => {
             key="success"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col items-center gap-3 rounded-lg border border-success/30 bg-success/5 p-8"
+            className="mt-6 flex flex-col items-center gap-4 rounded-xl border border-green-500/20 bg-green-500/5 p-10 text-center"
           >
-            <CheckCircle2 className="h-12 w-12 text-success" />
-            <p className="text-lg font-semibold text-foreground">Submission received!</p>
-            <p className="text-sm text-muted-foreground">Your work has been submitted for AI evaluation.</p>
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/20">
+              <CheckCircle2 className="h-8 w-8 text-green-600" />
+            </div>
+            <div>
+              <p className="text-xl font-bold text-foreground">Submission Received!</p>
+              <p className="mt-2 text-sm text-muted-foreground max-w-xs">Your work has been submitted successfully and is being evaluated by the AI engine.</p>
+            </div>
           </motion.div>
         ) : (
           <motion.form
             key="form"
             onSubmit={handleSubmit}
-            className="space-y-4"
+            className="mt-8 space-y-6"
           >
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Tasks Completed</label>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-foreground uppercase tracking-tight">Tasks Completed</label>
               <Textarea 
-                placeholder="What specific tasks did you finish?" 
+                placeholder="What specific components or features did you implement?" 
                 value={formData.tasksDone}
                 onChange={(e) => setFormData({ ...formData, tasksDone: e.target.value })}
-                className="bg-background"
-                rows={3}
+                className="bg-background border-border/50 focus:border-primary resize-none"
+                rows={4}
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Hours Spent</label>
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3">
+              <label className="text-xs font-bold text-foreground uppercase tracking-tight">Hours Consumed</label>
+              <div className="mt-1.5 flex items-center gap-2 rounded-xl border border-border/50 bg-background px-4 h-12">
                 <ClockIcon className="h-4 w-4 text-muted-foreground" />
                 <Input 
                   type="number" 
                   placeholder="e.g., 5" 
                   value={formData.hoursSpent}
                   onChange={(e) => setFormData({ ...formData, hoursSpent: e.target.value })}
-                  className="border-0 bg-transparent shadow-none focus-visible:ring-0" 
+                  className="border-0 bg-transparent shadow-none focus-visible:ring-0 font-medium" 
                 />
               </div>
             </div>
 
             {currentWeek === 8 && (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">GitHub Link</label>
-                <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-foreground uppercase tracking-tight">Repository Evidence (GitHub Mirror)</label>
+                <div className="flex items-center gap-2 rounded-xl border border-border/50 bg-background px-4 h-12">
                   <LinkIcon className="h-4 w-4 text-muted-foreground" />
                   <Input 
-                    placeholder="https://github.com/..." 
+                    placeholder="https://github.com/v-goud/my-project" 
                     value={formData.githubLink}
                     onChange={(e) => setFormData({ ...formData, githubLink: e.target.value })}
-                    className="border-0 bg-transparent shadow-none focus-visible:ring-0" 
+                    className="border-0 bg-transparent shadow-none focus-visible:ring-0 font-medium" 
                   />
                 </div>
               </div>
             )}
 
             {phase.fields.length > 0 && phase.fields.map((field) => (
-              <div key={field.name}>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">{field.label}</label>
+              <div key={field.name} className="space-y-2">
+                <label className="text-xs font-bold text-foreground uppercase tracking-tight">{field.label}</label>
                 {field.type === 'file' && (
-                  <div className="group relative flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border bg-background p-4 transition-colors hover:border-primary/50 hover:bg-accent/30">
-                    <div className="flex flex-col items-center gap-1 text-center">
-                      <Upload className="h-6 w-6 text-muted-foreground group-hover:text-primary" />
-                      <p className="text-xs text-muted-foreground">
-                        {formData.file ? formData.file.name : "Click to upload file"}
+                  <div className="group relative flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-border/50 bg-background/50 p-6 transition-all hover:border-primary hover:bg-primary/5">
+                    <div className="flex flex-col items-center gap-2 text-center">
+                      <Upload className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <p className="text-sm font-semibold text-muted-foreground group-hover:text-foreground">
+                        {formData.file ? formData.file.name : "Select or Drop File"}
                       </p>
+                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Max 10MB</p>
                     </div>
                     <input 
                       type="file" 
@@ -201,14 +217,14 @@ const SubmissionForm = ({ currentWeek, subjectName }: Props) => {
               </div>
             ))}
 
-            <Button type="submit" className="w-full gap-2 mt-2" disabled={submitting}>
+            <Button type="submit" className="w-full h-14 gap-3 text-base font-bold shadow-lg shadow-primary/20" disabled={submitting}>
               {submitting ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Evaluating…
+                  <Loader2 className="h-5 w-5 animate-spin" /> Evaluating Work...
                 </>
               ) : (
                 <>
-                  <FileText className="h-4 w-4" /> Submit & Evaluation
+                  <FileText className="h-5 w-5" /> Submit for Evaluation
                 </>
               )}
             </Button>

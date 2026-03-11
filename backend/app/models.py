@@ -1,96 +1,69 @@
-from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
-from .database import Base
+from datetime import datetime
+from app.database import Base
 
 class User(Base):
     __tablename__ = "users"
-
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)
-    email = Column(String(150), unique=True, index=True, nullable=False)
-    password = Column(Text, nullable=False)
-    roll_number = Column(String(50), nullable=True)
-    class_section = Column(String(20), nullable=True)
-    lg_number = Column(Integer, nullable=True)
-    skills = Column(Text, nullable=True)
-    availability = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password = Column(String, nullable=False)
+    roll_number = Column(String)
+    class_section = Column(String)
+    lg_number = Column(Integer)
+    skills = Column(Text)
+    availability = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
-    team_membership = relationship("TeamMember", back_populates="user", uselist=False)
-
-class Team(Base):
-    __tablename__ = "teams"
-
+class Subject(Base):
+    __tablename__ = "subjects"
     id = Column(Integer, primary_key=True, index=True)
-    class_section = Column(String(20), nullable=False)
-    lg_number = Column(Integer, nullable=False)
-    leader_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
-
-    # Relationships
-    members = relationship("TeamMember", back_populates="team")
-    projects = relationship("Project", back_populates="team")
-    leader = relationship("User")
+    name = Column(String(100), unique=True, nullable=False)
 
 class TeamMember(Base):
     __tablename__ = "team_members"
-
     id = Column(Integer, primary_key=True, index=True)
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    class_section = Column(String(20))
+    lg_number = Column(Integer)
+    is_leader = Column(Boolean, default=False)
 
-    # Relationships
-    team = relationship("Team", back_populates="members")
-    user = relationship("User", back_populates="team_membership")
-
-class Project(Base):
-    __tablename__ = "projects"
-
+class TeamProject(Base):
+    __tablename__ = "team_projects"
     id = Column(Integer, primary_key=True, index=True)
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
-    subject = Column(String(100), nullable=False)
-    title = Column(Text, nullable=True)
-    description = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    class_section = Column(String(20))
+    lg_number = Column(Integer)
+    subject_id = Column(Integer, ForeignKey("subjects.id"))
+    title = Column(Text)
+    description = Column(Text)
+    leader_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
-    team = relationship("Team", back_populates="projects")
-
+# Keep these for now if they are used elsewhere, but we might need to migrate them
 class PhaseTask(Base):
     __tablename__ = "phase_tasks"
-
     id = Column(Integer, primary_key=True, index=True)
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
-    subject = Column(String(100), nullable=False)
-    phase = Column(String(50), nullable=False)
-    member_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    class_section = Column(String(20))
+    lg_number = Column(Integer)
+    subject_id = Column(Integer, ForeignKey("subjects.id"))
+    phase = Column(String, nullable=False)
+    member_id = Column(Integer, ForeignKey("users.id"))
     task = Column(Text, nullable=False)
-
-    # Relationships
-    team = relationship("Team")
-    member = relationship("User")
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Submission(Base):
     __tablename__ = "submissions"
-
     id = Column(Integer, primary_key=True, index=True)
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    subject = Column(String(100), nullable=False)
-    phase = Column(String(50), nullable=False)
-
-    file_path = Column(Text, nullable=True)
-    github_link = Column(Text, nullable=True)
-
-    tasks_done = Column(Text, nullable=True)
-    hours_spent = Column(Integer, nullable=True)
-
-    ai_score = Column(Integer, nullable=True)
-    ai_feedback = Column(Text, nullable=True)
-
-    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
-
-    # Relationships
-    team = relationship("Team")
-    user = relationship("User")
+    class_section = Column(String(20))
+    lg_number = Column(Integer)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    subject_id = Column(Integer, ForeignKey("subjects.id"))
+    phase = Column(String, nullable=False)
+    file_path = Column(String)
+    github_link = Column(String)
+    tasks_done = Column(Text)
+    hours_spent = Column(Integer)
+    ai_score = Column(Integer)
+    ai_feedback = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)

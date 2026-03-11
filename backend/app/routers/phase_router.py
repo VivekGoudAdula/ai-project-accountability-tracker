@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, Team, TeamMember, Project, PhaseTask, Submission
+from app.models import User, TeamMember, TeamProject, PhaseTask, Submission, Subject
 from app.schemas import PhaseInfo, TaskOut, SubmissionOut
 from app.services.phase_engine import get_phase_info, get_current_phase
 from app.services.ai_prompt_engine import divide_tasks_for_phase, evaluate_submission
@@ -24,7 +24,7 @@ def get_current_phase_info():
 @router.get("/tasks", response_model=List[TaskOut])
 def get_tasks(
     user_id: int, 
-    subject: str, 
+    subject_id: int, 
     db: Session = Depends(get_db)
 ):
     # 1. Get current phase
@@ -32,35 +32,36 @@ def get_tasks(
     if not phase:
         return []
 
-    # 2. Get user's team
+    # 2. Get user's LG info
     membership = db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
     if not membership:
         raise HTTPException(status_code=404, detail="User not assigned to a team")
     
-    team_id = membership.team_id
-
-    # 3. Check if tasks already exist for this team, subject and phase
+    # 3. Check if tasks already exist for this LG, subject and phase
     tasks = db.query(PhaseTask).filter(
-        PhaseTask.team_id == team_id,
-        PhaseTask.subject == subject,
+        PhaseTask.class_section == membership.class_section,
+        PhaseTask.lg_number == membership.lg_number,
+        PhaseTask.subject_id == subject_id,
         PhaseTask.phase == phase
     ).all()
 
     if not tasks:
         # 4. Trigger AI task division if tasks don't exist
-        project = db.query(Project).filter(
-            Project.team_id == team_id,
-            Project.subject == subject
+        project = db.query(TeamProject).filter(
+            TeamProject.class_section == membership.class_section,
+            TeamProject.lg_number == membership.lg_number,
+            TeamProject.subject_id == subject_id
         ).first()
         
         if not project:
-            raise HTTPException(status_code=404, detail="Project not initialized")
+            # We skip task division if project not initialized
+            return []
 
         # Get all team members
-        members = db.query(TeamMember).filter(TeamMember.team_id == team_id).all()
-        if len(members) < 3:
-            # Maybe not enough members yet, but we'll try to divide anyway or wait
-            pass
+        members = db.query(TeamMember).filter(
+            TeamMember.class_section == membership.class_section,
+            TeamMember.lg_number == membership.lg_number
+        ).all()
         
         # Call AI engine
         try:
@@ -70,14 +71,14 @@ def get_tasks(
             )
             
             # Store tasks mapping member_id to task
-            # Assuming 3 members as per requirements
             for i, member in enumerate(members):
                 task_key = f"member{i+1}_task"
                 task_text = divided_tasks.get(task_key, "Contribute to project phase")
                 
                 new_task = PhaseTask(
-                    team_id=team_id,
-                    subject=subject,
+                    class_section=membership.class_section,
+                    lg_number=membership.lg_number,
+                    subject_id=subject_id,
                     phase=phase,
                     member_id=member.user_id,
                     task=task_text
@@ -88,21 +89,24 @@ def get_tasks(
             
             # Re-fetch tasks
             tasks = db.query(PhaseTask).filter(
-                PhaseTask.team_id == team_id,
-                PhaseTask.subject == subject,
+                PhaseTask.class_section == membership.class_section,
+                PhaseTask.lg_number == membership.lg_number,
+                PhaseTask.subject_id == subject_id,
                 PhaseTask.phase == phase
             ).all()
         except Exception as e:
             print(f"Error in task division: {e}")
             return []
 
-    return tasks
+    # Convert to TaskOut schema
+    return [TaskOut(id=t.id, phase=t.phase, member_id=t.member_id, task=t.task) for t in tasks]
 
 @router.post("/submission/create")
 async def create_submission(
-    team_id: int = Form(...),
+    class_section: str = Form(...),
+    lg_number: int = Form(...),
     user_id: int = Form(...),
-    subject: str = Form(...),
+    subject_id: int = Form(...),
     phase: str = Form(...),
     tasks_done: str = Form(...),
     hours_spent: int = Form(...),
@@ -110,13 +114,10 @@ async def create_submission(
     file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db)
 ):
-    # 1. Check if submission is open (handled by phase engine logic in service)
-    # For now, we trust the phase passed or re-verify
-    
     file_path = None
     if file:
         file_ext = os.path.splitext(file.filename)[1]
-        filename = f"{team_id}_{phase}_{user_id}{file_ext}"
+        filename = f"{class_section}_{lg_number}_{phase}_{user_id}{file_ext}"
         destination = os.path.join(UPLOAD_DIR, filename)
         with open(destination, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -127,12 +128,6 @@ async def create_submission(
     ai_feedback = ""
     
     try:
-        # If it's implementation phase and github link is provided, analyze it
-        github_summary = ""
-        if phase == "Implementation" and github_link:
-            analysis = analyze_github_repo(github_link)
-            github_summary = analysis.get("analysis_summary", "")
-        
         # Evaluate with AI
         evidence = github_link if phase == "Implementation" else file_path
         evaluation = evaluate_submission(
@@ -147,8 +142,6 @@ async def create_submission(
         risk = evaluation.get("freeload_risk", "Low")
         
         ai_feedback = f"Evaluation: {feedback_text}\nRisk Level: {risk}"
-        if github_summary:
-            ai_feedback = f"GitHub Analysis:\n{github_summary}\n\n{ai_feedback}"
 
     except Exception as e:
         print(f"Error in evaluation: {e}")
@@ -156,9 +149,10 @@ async def create_submission(
 
     # 3. Create submission record
     submission = Submission(
-        team_id=team_id,
+        class_section=class_section,
+        lg_number=lg_number,
         user_id=user_id,
-        subject=subject,
+        subject_id=subject_id,
         phase=phase,
         file_path=file_path,
         github_link=github_link,
@@ -176,23 +170,25 @@ async def create_submission(
 
 @router.get("/submission/history", response_model=List[SubmissionOut])
 def get_submission_history(
-    team_id: int,
-    subject: str,
+    class_section: str,
+    lg_number: int,
+    subject_id: int,
     db: Session = Depends(get_db)
 ):
     submissions = db.query(Submission).filter(
-        Submission.team_id == team_id,
-        Submission.subject == subject
+        Submission.class_section == class_section,
+        Submission.lg_number == lg_number,
+        Submission.subject_id == subject_id
     ).order_by(Submission.created_at.desc()).all()
     
-    # Convert to schema compatible format (string datetime)
     results = []
     for s in submissions:
         results.append(SubmissionOut(
             id=s.id,
-            team_id=s.team_id,
+            class_section=s.class_section,
+            lg_number=s.lg_number,
             user_id=s.user_id,
-            subject=s.subject,
+            subject_id=s.subject_id,
             phase=s.phase,
             file_path=s.file_path,
             github_link=s.github_link,

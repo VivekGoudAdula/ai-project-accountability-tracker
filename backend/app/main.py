@@ -1,7 +1,9 @@
+import os
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from routers import auth_router, app_router, phase_router
+from app.routers import auth_router, app_router, phase_router
 
 # Create database tables automatically
 Base.metadata.create_all(bind=engine)
@@ -26,8 +28,7 @@ app.include_router(phase_router.router, prefix="/api", tags=["Phases"])
 def root():
     return {"message": "Welcome to AI Group Project Accountability Tracker API"}
 
-import os
-import uvicorn
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

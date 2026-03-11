@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 const ProjectWorkspace = () => {
   const { id } = useParams();
   const { user } = useAuthStore();
-  const { subjects, phases, tasks, teamId, leaderId, teamMembers: storeMembers } = useProjectStore();
+  const { subjects, phases, tasks, leaderName, teamMembers: storeMembers } = useProjectStore();
   const [initializing, setInitializing] = useState(false);
   const [initData, setInitData] = useState({ title: '', description: '' });
   
@@ -39,14 +39,14 @@ const ProjectWorkspace = () => {
       useProjectStore.getState().fetchPhaseInfo();
       
       // Fetch tasks if subject is ready
-      if (subject?.name && user?.id) {
-        useProjectStore.getState().fetchTasks(Number(user.id), subject.name);
-        if (teamId) {
-          useProjectStore.getState().fetchSubmissions(teamId, subject.name);
+      if (subject?.id && user?.id) {
+        useProjectStore.getState().fetchTasks(Number(user.id), Number(subject.id));
+        if (user.classSection && user.lgNumber) {
+          useProjectStore.getState().fetchSubmissions(user.classSection, Number(user.lgNumber.replace('LG ', '')), Number(subject.id));
         }
       }
     }
-  }, [user?.id, subjects.length, subject?.name]);
+  }, [user?.id, subjects.length, subject?.id]);
 
   const handleInitialize = async () => {
     if (!initData.title || !initData.description) {
@@ -56,12 +56,12 @@ const ProjectWorkspace = () => {
 
     setInitializing(true);
     try {
-      await api.post('/project/initialize', {
-        user_id: user?.id,
-        team_id: teamId,
-        subject: subject.name,
+      await api.post(`/project/create?user_id=${user?.id}`, {
+        subject_id: Number(subject?.id),
         title: initData.title,
         description: initData.description,
+        class_section: user?.classSection,
+        lg_number: Number(user?.lgNumber?.replace('LG ', ''))
       });
       toast.success('Project initialized!');
       // Refresh global store data
@@ -74,16 +74,24 @@ const ProjectWorkspace = () => {
     }
   };
 
-  const isLeader = user?.id && leaderId ? Number(user.id) === leaderId : false;
+  const isLeader = user?.name === leaderName;
   const isInitialized = !!subject?.projectTitle;
 
   const currentPhase = phases.find((p) => p.status === 'current');
+
+  if (!subject) return (
+    <DashboardLayout>
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    </DashboardLayout>
+  );
 
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-6xl">
         {/* Breadcrumb */}
-        <Link to="/dashboard" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+        <Link to="/dashboard" className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
           <ArrowLeft className="h-4 w-4" /> Back to Dashboard
         </Link>
 
@@ -93,11 +101,14 @@ const ProjectWorkspace = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <span className="text-sm font-medium text-primary">{subject.name}</span>
-          <h1 className="mt-1 text-2xl font-bold text-foreground">
+          <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-primary">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            {subject.name}
+          </div>
+          <h1 className="mt-2 text-3xl font-extrabold text-foreground tracking-tight">
             {subject.projectTitle || 'Project Workspace'}
           </h1>
-          <p className="mt-1 text-muted-foreground">
+          <p className="mt-2 text-muted-foreground text-lg">
             {isInitialized 
               ? 'Track progress, submit deliverables, and collaborate with your team.'
               : 'Initialize your project to start tracking progress.'}
@@ -106,82 +117,98 @@ const ProjectWorkspace = () => {
 
         {/* Uninitialized View */}
         {!isInitialized ? (
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-8 lg:grid-cols-3">
             <div className="lg:col-span-2">
               {isLeader ? (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="rounded-2xl border border-primary/20 bg-card p-8 shadow-xl"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl border border-primary/20 bg-card p-10 shadow-2xl relative overflow-hidden"
                 >
-                  <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl gradient-primary">
-                    <Rocket className="h-7 w-7 text-primary-foreground" />
+                  <div className="absolute top-0 right-0 p-8 opacity-5">
+                    <Rocket className="h-32 w-32" />
                   </div>
-                  <h2 className="text-xl font-bold text-foreground">Initialize Your Project</h2>
-                  <p className="mt-2 text-muted-foreground">As the Team Leader, you need to set a title and description for this subject to unlock the workspace.</p>
                   
-                  <div className="mt-8 space-y-4">
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-foreground">Project Title</label>
+                  <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
+                    <Rocket className="h-8 w-8 text-primary-foreground" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-foreground">Initialize Your Project</h2>
+                  <p className="mt-3 text-muted-foreground text-base">As the Team Leader, you need to set a title and description for this subject to unlock the workspace for your entire team.</p>
+                  
+                  <div className="mt-10 space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-foreground uppercase tracking-tight">Project Title</label>
                       <Input 
                         placeholder="e.g., AI-Powered Study Assistant" 
                         value={initData.title}
                         onChange={(e) => setInitData({ ...initData, title: e.target.value })}
-                        className="bg-background"
+                        className="bg-background h-12 border-border/50 focus:border-primary"
                       />
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-foreground">Short Description</label>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-foreground uppercase tracking-tight">Description</label>
                       <Textarea 
-                        placeholder="What are you building? (e.g., A tool that helps students manage their schedules using LLMs)" 
-                        rows={4}
+                        placeholder="What are you building? Describe the core goal and technology stack." 
+                        rows={5}
                         value={initData.description}
                         onChange={(e) => setInitData({ ...initData, description: e.target.value })}
-                        className="bg-background"
+                        className="bg-background border-border/50 focus:border-primary resize-none"
                       />
                     </div>
                     <Button 
-                      className="w-full h-11 gap-2 text-base" 
+                      className="w-full h-14 gap-3 text-lg font-bold shadow-xl shadow-primary/20" 
                       onClick={handleInitialize}
                       disabled={initializing}
                     >
                       {initializing ? (
                         <>
-                          <Loader2 className="h-5 w-5 animate-spin" /> Initializing…
+                          <Loader2 className="h-6 w-6 animate-spin" /> Launching...
                         </>
                       ) : (
                         <>
-                          <Rocket className="h-5 w-5" /> Launch Workspace
+                          <Rocket className="h-6 w-6" /> Launch Workspace
                         </>
                       )}
                     </Button>
                   </div>
                 </motion.div>
               ) : (
-                <div className="flex h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/10 text-center p-10">
-                  <Clock className="mb-4 h-12 w-12 text-muted-foreground opacity-20" />
-                  <h2 className="text-lg font-semibold text-foreground">Waiting for Team Leader</h2>
-                  <p className="mt-2 text-sm text-muted-foreground max-w-xs mx-auto">
-                    Your team leader needs to set the project title and description before the workspace becomes active.
+                <div className="flex h-80 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/50 bg-card/5 text-center p-12">
+                  <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-secondary/50">
+                    <Clock className="h-10 w-10 text-muted-foreground/40" />
+                  </div>
+                  <h2 className="text-xl font-bold text-foreground italic">Waiting for Team Leader</h2>
+                  <p className="mt-3 text-base text-muted-foreground max-w-sm mx-auto">
+                    Your team leader <span className="text-primary font-bold">@{leaderName || 'Assigning...'}</span> needs to initialize the project before you can start collaborating.
                   </p>
                 </div>
               )}
             </div>
             <div>
-              <div className="rounded-xl border border-border bg-card p-6">
-                <h3 className="mb-4 text-sm font-semibold text-foreground">Meet Your Team</h3>
-                <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
+                <div className="mb-6 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">The Team</h3>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="space-y-5">
                   {storeMembers.map((m) => (
-                    <div key={m.name} className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full gradient-primary text-xs font-bold text-primary-foreground">
-                        {m.initials}
+                    <div key={m.name} className="flex items-center gap-4 group">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                        <span className="text-xs font-bold">{m.initials}</span>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{m.name}</p>
-                        <p className="text-xs text-muted-foreground">{m.role}</p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-foreground">{m.name}</p>
+                        <p className="text-xs text-muted-foreground font-medium">{m.role}</p>
                       </div>
                     </div>
                   ))}
+                  {storeMembers.length < 3 && (
+                    <div className="mt-4 rounded-lg bg-orange-500/5 border border-orange-500/20 p-4">
+                      <p className="text-xs text-orange-600 font-medium leading-relaxed">
+                        LG group is incomplete. Need {3 - storeMembers.length} more members to fully unlock all features.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -194,72 +221,49 @@ const ProjectWorkspace = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-              className="mb-6"
+              className="mb-8"
             >
               <PhaseTimeline phases={phases} />
             </motion.div>
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-8 lg:grid-cols-3">
               {/* Left Column */}
-              <div className="space-y-6 lg:col-span-2">
+              <div className="space-y-8 lg:col-span-2">
                 {/* Project Overview */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
-                  className="rounded-xl border border-border bg-card p-6"
+                  className="rounded-2xl border border-border bg-card p-8 shadow-sm"
                 >
-                  <div className="mb-4 flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <h3 className="text-base font-semibold text-foreground">Project Overview</h3>
+                  <div className="mb-6 flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                      <FileText className="h-5 w-5 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-bold text-foreground tracking-tight">Project Details</h3>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     {[
-                      { label: 'Project Title', value: subject.projectTitle },
-                      { label: 'Current Phase', value: `${currentPhase?.title} (Week ${currentPhase?.week})` },
-                      { label: 'Progress', value: `${subject.progress}%` },
-                      { label: 'Deadline', value: 'Sunday 11:59 PM' },
+                      { label: 'Current Phase', value: subject.currentPhase },
+                      { label: 'Progress Score', value: `${subject.progress}%`, subValue: 'Based on submissions' },
+                      { label: 'Next Deadline', value: 'Sunday 11:59 PM', highlight: true },
+                      { label: 'Team Leader', value: leaderName || 'N/A' },
                     ].map((item) => (
-                      <div key={item.label} className="rounded-lg border border-border bg-background p-3">
-                        <p className="text-xs text-muted-foreground">{item.label}</p>
-                        <p className="mt-1 text-sm font-medium text-foreground">{item.value}</p>
+                      <div key={item.label} className="rounded-xl border border-border/50 bg-background/50 p-4 group transition-colors hover:border-primary/30">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{item.label}</p>
+                        <p className={`mt-2 text-base font-bold text-foreground ${item.highlight ? 'text-primary' : ''}`}>{item.value}</p>
+                        {item.subValue && <p className="mt-1 text-[10px] text-muted-foreground font-medium">{item.subValue}</p>}
                       </div>
                     ))}
                   </div>
                 </motion.div>
 
-                {/* Team Members */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.15 }}
-                  className="rounded-xl border border-border bg-card p-6"
-                >
-                  <div className="mb-4 flex items-center gap-2">
-                    <Users className="h-5 w-5 text-primary" />
-                    <h3 className="text-base font-semibold text-foreground">Team Members</h3>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {storeMembers.map((m) => (
-                      <div key={m.name} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full gradient-primary text-xs font-bold text-primary-foreground">
-                          {m.initials}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{m.name}</p>
-                          <p className="text-xs text-muted-foreground">{m.role}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-
-                {/* Submission Form */}
+                {/* Submission Forum */}
                 <SubmissionForm currentWeek={currentPhase?.week || 7} subjectName={subject.name} />
               </div>
 
               {/* Right Column */}
-              <div className="space-y-6">
+              <div className="space-y-8">
                 <TaskList tasks={tasks} />
               </div>
             </div>

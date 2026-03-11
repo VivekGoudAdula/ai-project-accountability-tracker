@@ -1,10 +1,11 @@
 import { create } from 'zustand';
+import api from '@/lib/api';
 
 export interface Subject {
   id: string;
   name: string;
   projectTitle?: string;
-  currentPhase: number;
+  currentPhase: string;
   progress: number;
 }
 
@@ -27,9 +28,8 @@ interface ProjectState {
   currentSubject: Subject | null;
   phases: Phase[];
   tasks: Task[];
-  teamMembers: { name: string; initials: string; role: string; id: number }[];
-  teamId: number | null;
-  leaderId: number | null;
+  teamMembers: { name: string; initials: string; role: string }[];
+  leaderName: string | null;
   message: string | null;
   currentPhaseInfo: { week_number: number; current_phase: string; submission_open: boolean } | null;
   submissionHistory: any[];
@@ -37,8 +37,8 @@ interface ProjectState {
   setSubjects: (s: Subject[]) => void;
   setDashboardData: (data: any) => void;
   fetchPhaseInfo: () => Promise<void>;
-  fetchTasks: (userId: number, subject: string) => Promise<void>;
-  fetchSubmissions: (teamId: number, subject: string) => Promise<void>;
+  fetchTasks: (userId: number, subjectId: number) => Promise<void>;
+  fetchSubmissions: (classSection: string, lgNumber: number, subjectId: number) => Promise<void>;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -47,8 +47,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   phases: [],
   tasks: [],
   teamMembers: [],
-  teamId: null,
-  leaderId: null,
+  leaderName: null,
   message: null,
   currentPhaseInfo: null,
   submissionHistory: [],
@@ -57,25 +56,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setDashboardData: (data) => {
     const mappedSubjects: Subject[] = data.subjects.map((s: any) => ({
       id: String(s.id),
-      name: s.subject,
-      projectTitle: s.title || undefined,
-      currentPhase: 6, // default
-      progress: s.title ? 15 : 0,
+      name: s.name,
+      projectTitle: s.project_title || undefined,
+      currentPhase: s.phase || 'Phase 1: Project Setup',
+      progress: s.progress || 0,
     }));
 
-    const mappedMembers = data.members.map((m: any) => ({
-      id: m.id,
-      name: m.name,
-      initials: m.name.split(' ').map((n: string) => n[0]).join('').toUpperCase(),
-      role: data.leader_id && data.leader_id === m.id ? 'Team Leader' : 'Developer',
+    const mappedMembers = data.team_members.map((name: string) => ({
+      name: name,
+      initials: name.split(' ').map((n: string) => n[0]).join('').toUpperCase(),
+      role: name === data.leader ? 'Team Leader' : 'Team Member',
     }));
 
     set({
       subjects: mappedSubjects,
       teamMembers: mappedMembers,
-      teamId: data.team_id || null,
-      leaderId: data.leader_id || null,
-      message: data.message || null,
+      leaderName: data.leader || null,
+      message: data.team_members.length < 3 ? "Wait for 3 members to join your LG" : null,
     });
   },
   fetchPhaseInfo: async () => {
@@ -110,18 +107,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       console.error('Failed to fetch phase info', err);
     }
   },
-  fetchTasks: async (userId: number, subject: string) => {
+  fetchTasks: async (userId: number, subjectId: number) => {
     try {
-      const res = await api.get(`/tasks?user_id=${userId}&subject=${subject}`);
-      const members = get().teamMembers;
+      const res = await api.get(`/tasks?user_id=${userId}&subject_id=${subjectId}`);
       
       const mappedTasks: Task[] = res.data.map((t: any) => {
-        const member = members.find(m => m.id === t.member_id);
         return {
           id: String(t.id),
-          member: member ? member.name : `Member ${t.member_id}`,
+          member: `Member ${t.member_id}`,
           description: t.task,
-          status: 'pending' // Default status for now
+          status: 'pending'
         };
       });
       set({ tasks: mappedTasks });
@@ -129,9 +124,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       console.error('Failed to fetch tasks', err);
     }
   },
-  fetchSubmissions: async (teamId: number, subject: string) => {
+  fetchSubmissions: async (classSection: string, lgNumber: number, subjectId: number) => {
     try {
-      const res = await api.get(`/submission/history?team_id=${teamId}&subject=${subject}`);
+      const res = await api.get(`/submission/history?class_section=${classSection}&lg_number=${lgNumber}&subject_id=${subjectId}`);
       set({ submissionHistory: res.data });
     } catch (err) {
       console.error('Failed to fetch submission history', err);
