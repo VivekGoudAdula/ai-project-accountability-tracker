@@ -8,3 +8,6 @@ python-dotenv
 groq
 httpx
 pydantic[email]
+PyPDF2
+transformers
+Pillow

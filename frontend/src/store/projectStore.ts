@@ -32,14 +32,17 @@ interface ProjectState {
   leaderName: string | null;
   leaderId: number | null;
   message: string | null;
-  currentPhaseInfo: { week_number: number; current_phase: string; submission_open: boolean } | null;
+  currentPhaseInfo: { week_number: number; current_phase: string; submission_open: boolean; time_remaining?: number; can_advance?: boolean } | null;
   submissionHistory: any[];
+  teamSubmissionStatus: { id: number; name: string; submitted: boolean }[];
   setCurrentSubject: (s: Subject | null) => void;
   setSubjects: (s: Subject[]) => void;
   setDashboardData: (data: any) => void;
   fetchPhaseInfo: (userId: number, subjectId: number) => Promise<void>;
   fetchTasks: (userId: number, subjectId: number) => Promise<void>;
   fetchSubmissions: (userId: number, subjectId: number) => Promise<void>;
+  fetchTeamSubmissionStatus: (userId: number, subjectId: number) => Promise<void>;
+  advancePhase: (userId: number, subjectId: number) => Promise<void>;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -53,6 +56,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   message: null,
   currentPhaseInfo: null,
   submissionHistory: [],
+  teamSubmissionStatus: [],
   setCurrentSubject: (s) => set({ currentSubject: s }),
   setSubjects: (s) => set({ subjects: s }),
   setDashboardData: (data) => {
@@ -92,7 +96,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         else if (i === info.phase_index) status = 'current';
         
         return {
-          week: i, 
+          week: i + 6, 
           title: title as string,
           deadline: 'Sunday 11:59 PM',
           status
@@ -104,7 +108,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         currentPhaseInfo: {
           week_number: info.phase_index,
           current_phase: info.current_phase,
-          submission_open: info.submission_open
+          submission_open: info.submission_open,
+          time_remaining: info.time_remaining,
+          can_advance: info.can_advance
         }
       });
     } catch (err) {
@@ -134,6 +140,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ submissionHistory: res.data });
     } catch (err) {
       console.error('Failed to fetch submission history', err);
+    }
+  },
+  fetchTeamSubmissionStatus: async (userId: number, subjectId: number) => {
+    try {
+      const res = await api.get(`/submission/team-status?user_id=${userId}&subject_id=${subjectId}`);
+      set({ teamSubmissionStatus: res.data });
+    } catch (err) {
+      console.error('Failed to fetch team submission status', err);
+    }
+  },
+  advancePhase: async (userId: number, subjectId: number) => {
+    try {
+      await api.post(`/phase/advance/${subjectId}?user_id=${userId}`);
+      // Re-fetch info after advancing
+      await get().fetchPhaseInfo(userId, subjectId);
+    } catch (err) {
+      console.error('Failed to advance phase', err);
     }
   }
 }));

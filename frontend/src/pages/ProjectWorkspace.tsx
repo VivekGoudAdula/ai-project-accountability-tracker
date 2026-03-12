@@ -6,9 +6,9 @@ import { useAuthStore } from '@/store/authStore';
 import DashboardLayout from '@/components/DashboardLayout';
 import PhaseTimeline from '@/components/PhaseTimeline';
 import TaskList from '@/components/TaskList';
-import SubmissionForm from '@/components/SubmissionForm';
-import EvaluationInsightsPanel from '@/components/EvaluationInsightsPanel';
-import { Users, FileText, ArrowLeft, Rocket, Loader2, Clock } from 'lucide-react';
+import PhaseSubmissionPanel from '@/components/PhaseSubmissionPanel';
+import PhaseTimer from '@/components/PhaseTimer';
+import { Users, FileText, ArrowLeft, Rocket, Loader2, Clock, CheckCircle2 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import { Textarea } from '@/components/ui/textarea';
 const ProjectWorkspace = () => {
   const { id } = useParams();
   const { user } = useAuthStore();
-  const { subjects, phases, tasks, leaderName, leaderId, teamMembers: storeMembers } = useProjectStore();
+  const { subjects, phases, tasks, leaderName, leaderId, teamMembers: storeMembers, currentPhaseInfo, teamSubmissionStatus } = useProjectStore();
   const [initializing, setInitializing] = useState(false);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [initData, setInitData] = useState({ title: '', description: '' });
@@ -48,7 +48,24 @@ const ProjectWorkspace = () => {
       useProjectStore.getState().fetchPhaseInfo(Number(user.id), numericId);
       useProjectStore.getState().fetchTasks(Number(user.id), numericId);
       useProjectStore.getState().fetchSubmissions(Number(user.id), numericId);
+      useProjectStore.getState().fetchTeamSubmissionStatus(Number(user.id), numericId);
     }
+    
+    // Set up polling for phase progression
+    let intervalId: NodeJS.Timeout;
+    if (subject?.id && user?.id) {
+      intervalId = setInterval(() => {
+        useProjectStore.getState().fetchPhaseInfo(Number(user.id), numericId);
+        useProjectStore.getState().fetchTeamSubmissionStatus(Number(user.id), numericId);
+        // Refresh tasks and submissions seamlessly in background
+        useProjectStore.getState().fetchTasks(Number(user.id), numericId);
+        useProjectStore.getState().fetchSubmissions(Number(user.id), numericId);
+      }, 5000);
+    }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [user?.id, subjects.length, subject?.id, id]);
 
   const handleInitialize = async () => {
@@ -257,10 +274,20 @@ const ProjectWorkspace = () => {
                     <h3 className="text-lg font-bold text-foreground tracking-tight">Project Details</h3>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border/50 bg-background/50 p-4 group transition-colors hover:border-primary/30">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Current Phase</p>
+                          <p className="mt-2 text-base font-bold text-foreground">{currentPhaseInfo?.current_phase || subject.currentPhase}</p>
+                        </div>
+                        {currentPhaseInfo?.current_phase !== 'Evaluation' && currentPhaseInfo?.time_remaining !== undefined && (
+                          <PhaseTimer initialTimeRemaining={currentPhaseInfo.time_remaining} />
+                        )}
+                      </div>
+                    </div>
                     {[
-                      { label: 'Current Phase', value: subject.currentPhase },
                       { label: 'Progress Score', value: `${subject.progress}%`, subValue: 'Based on submissions' },
-                      { label: 'Next Deadline', value: 'Sunday 11:59 PM', highlight: true },
+                      { label: 'Next Deadline', value: 'Manual Advance', highlight: true },
                       { label: 'Team Leader', value: leaderName || 'N/A' },
                     ].map((item) => (
                       <div key={item.label} className="rounded-xl border border-border/50 bg-background/50 p-4 group transition-colors hover:border-primary/30">
@@ -270,14 +297,68 @@ const ProjectWorkspace = () => {
                       </div>
                     ))}
                   </div>
+
+                  {/* Advance Phase Button */}
+                  {currentPhaseInfo?.can_advance && (
+                    <div className="mt-6">
+                      <Button 
+                        className="w-full h-12 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-900/20"
+                        onClick={() => {
+                          if (isLeader) {
+                            useProjectStore.getState().advancePhase(Number(user?.id), Number(id));
+                            toast.success(`Advanced to next phase!`);
+                          } else {
+                            toast.error(`Only the Team Leader (${leaderName}) can advance the phase.`);
+                          }
+                        }}
+                      >
+                        <Rocket className="h-4 w-4" /> Move to Next Phase: {phases[currentPhaseInfo.week_number + 1]?.title || 'Next'}
+                      </Button>
+                      {!isLeader && (
+                        <p className="mt-2 text-[10px] text-center text-muted-foreground font-medium italic">
+                          Waiting for Team Leader {leaderName} to click advance.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Submission Progress Sub-Panel */}
+                  {currentPhaseInfo?.current_phase !== 'Evaluation' && (
+                    <div className="mt-6 pt-6 border-t border-border/50">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-sm font-bold text-foreground tracking-tight">Phase Submission Progress</h4>
+                        <span className="text-xs font-medium text-muted-foreground bg-secondary px-2.5 py-1 rounded-full">
+                          {teamSubmissionStatus.filter(s => s.submitted).length} of 3 Submitted
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        {teamSubmissionStatus.map(member => (
+                          <div key={member.id} className="flex items-center justify-between p-3 rounded-xl bg-background border border-border/40">
+                            <span className="text-sm font-bold text-foreground">{member.name} {member.id === Number(user?.id) && "(You)"}</span>
+                            {member.submitted ? (
+                              <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-500/10 px-3 py-1 rounded-lg">
+                                <CheckCircle2 className="h-4 w-4" />
+                                <span className="text-xs font-bold">Submitted</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-muted-foreground bg-secondary px-3 py-1 rounded-lg">
+                                <Clock className="h-4 w-4" />
+                                <span className="text-xs font-bold">Pending</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
 
-                {/* Conditional Rendering: Submission Form OR Evaluation Dashboard */}
-                {subject.currentPhase === "Evaluation" ? (
-                  <EvaluationInsightsPanel subjectId={Number(subject.id)} />
-                ) : (
-                  <SubmissionForm currentWeek={currentPhase?.week || 0} subjectName={subject.name} />
-                )}
+                {/* Phase Submission Panel – handles all phases + evaluation */}
+                <PhaseSubmissionPanel
+                  subjectId={subject.id}
+                  subjectName={subject.name}
+                  currentPhase={subject.currentPhase}
+                />
               </div>
 
               {/* Right Column */}

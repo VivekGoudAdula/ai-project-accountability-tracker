@@ -39,6 +39,7 @@ class TeamProject(Base):
     description = Column(Text)
     leader_id = Column(Integer, ForeignKey("users.id"))
     current_phase_index = Column(Integer, default=0)
+    phase_start_time = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # Keep these for now if they are used elsewhere, but we might need to migrate them
@@ -58,11 +59,14 @@ class Submission(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     subject_id = Column(Integer, ForeignKey("subjects.id"))
+    class_section = Column(String(20))
+    lg_number = Column(Integer)
     phase = Column(String(50))
     week_number = Column(Integer)
     file_path = Column(String)
     github_link = Column(String)
     description = Column(Text)
+    status = Column(String(20), default="Submitted")
     ai_score = Column(Integer)
     ai_feedback = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)

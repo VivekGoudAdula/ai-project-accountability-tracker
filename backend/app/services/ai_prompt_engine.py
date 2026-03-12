@@ -36,6 +36,7 @@ def _chat(system_prompt: str, user_prompt: str) -> str:
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.3,
+        response_format={"type": "json_object"}
     )
     return response.choices[0].message.content.strip()
 
